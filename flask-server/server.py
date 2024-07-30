@@ -20,6 +20,9 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Load YOLO model
 model = YOLO("yolov8n.pt")  # pretrained YOLOv8n model
+from collections import Counter
+from collections import Counter
+
 def translate_coordinates_to_positions(coordinates_str):
     # Define thresholds for left/right and top/bottom
     left_threshold = 100
@@ -62,10 +65,14 @@ def translate_coordinates_to_positions(coordinates_str):
     # Determine the most common position for each object
     most_common_positions = {}
     for object_name, pos_list in positions.items():
-        most_common_position = Counter(pos_list).most_common(1)[0][0]
-        most_common_positions[object_name] = most_common_position
+        if len(pos_list) > 3:
+            most_common_positions[object_name] = f'A lot of {object_name}s'
+        else:
+            most_common_position = Counter(pos_list).most_common(1)[0][0]
+            most_common_positions[object_name] = most_common_position
 
     return most_common_positions
+
 @app.route('/uploads', methods=['POST'])
 def upload_image():
     data = request.get_json()
@@ -77,43 +84,42 @@ def upload_image():
     
     try:
         image_bytes = base64.b64decode(image_data)
-    except Exception as e:
-        return jsonify({'error': 'Invalid image data'}), 400
-    
-    filename = secure_filename('uploaded_image.jpeg')
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
-    with open(file_path, 'wb') as f:
-        f.write(image_bytes)
-    
-    # Run YOLO inference
-    results = model.predict(file_path)
-    result = results[0]
-    
-    number_of_objects =len(result.boxes)
-    print(number_of_objects)
-    output = ''
-    for box in result.boxes:
-        class_id = result.names[box.cls[0].item()]
-        cords = box.xyxy[0].tolist()
-        cords = [round(x) for x in cords]
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], 'uploaded_image.jpeg')
+        with open(file_path, 'wb') as f:
+            f.write(image_bytes)
         
-        output += f'{class_id} at coordinates:  {cords}\n'
-        res_plotted = result[0].plot()
-    
-    plt.imshow(res_plotted)
-    plt.axis('off')
-    plt.savefig('recognised.jpeg', bbox_inches='tight', pad_inches=0)
-    detected_objects = []
-    
-    recognized_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'recognized_' + filename)
+        # Run YOLO inference
+        results = model.predict(file_path)
+        result = results[0]
+        
+        number_of_objects = len(result.boxes)
+        print(number_of_objects)
+        output = ''
+        for box in result.boxes:
+            class_id = result.names[box.cls[0].item()]
+            cords = box.xyxy[0].tolist()
+            cords = [round(x) for x in cords]
+            
+            output += f'{class_id} at coordinates:  {cords}\n'
+            res_plotted = result[0].plot()
+        
+        plt.imshow(res_plotted)
+        plt.axis('off')
+        plt.savefig('recognised.jpeg', bbox_inches='tight', pad_inches=0)
+        
 
-    # with open(recognized_image_path, "rb") as image_file:
-    #     recognized_image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
-    output = translate_coordinates_to_positions(output)
-    grouped_output = [f'{obj} is at {pos}' for obj, pos in output.items()]
-    # return jsonify({'recognized_image': recognized_image_base64, 'detected_objects': results}), 200
-    return jsonify({'detected_objects': grouped_output, 'img_location':'http://192.168.1.4:7000/recognised.jpeg'}), 200
+        output = translate_coordinates_to_positions(output)
+        grouped_output = []
+        for obj, pos in output.items():
+            if pos.startswith('A lot of'):
+                grouped_output.append(pos)
+            else:
+                grouped_output.append(f'{obj} is at {pos}')
+        
+        return jsonify({'detected_objects': grouped_output, 'img_location':'http://192.168.1.4:7000/recognised.jpeg'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
