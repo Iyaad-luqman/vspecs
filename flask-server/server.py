@@ -124,7 +124,7 @@ def upload_image():
             else:
                 grouped_output.append(f'{obj} is at {pos}')
         grouped_output_str = '.'.join(grouped_output)
-        return jsonify({'text': grouped_output, 'image_url':'http://192.168.1.4:5000/recognised.jpeg'}), 200
+        return jsonify({'text': grouped_output_str, 'image_url':'http://192.168.1.4:5000/recognised.jpeg'}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

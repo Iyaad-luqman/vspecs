@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter_tts/flutter_tts.dart';
 
 void main() => runApp(VisionAIApp());
 
@@ -31,6 +31,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool isCaptureInProgress = false;
   String? imageUrl;
   String? responseText;
+  FlutterTts flutterTts = FlutterTts();
 
   @override
   void initState() {
@@ -41,7 +42,6 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> initializeCamera() async {
     final cameras = await availableCameras();
     final camera = cameras.first;
-
     controller = CameraController(camera, ResolutionPreset.high);
     await controller!.initialize();
     setState(() {
@@ -49,52 +49,59 @@ class _CameraScreenState extends State<CameraScreen> {
     });
   }
 
-Future<void> captureImage() async {
-  if (controller == null || !controller!.value.isInitialized) {
-    print('Controller is not initialized');
-    return;
-  }
-  if (isCaptureInProgress) {
-    print('Capture already in progress');
-    return;
-  }
-  setState(() {
-    isLoading = true;
-    isCaptureInProgress = true;
-  });
-  try {
-    debugPrint('1 ---------------------->>>>>>>>');
-    final image = await controller!.takePicture();
-    debugPrint('2 ---------------------->>>>>>>>');
-    final imageBytes = await image.readAsBytes();
-    debugPrint('3 ---------------------->>>>>>>>');
-    final response = await http.post(
-      Uri.parse('http://192.168.1.4:5000/uploads'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'image': base64Encode(imageBytes)}),
-    );
-    debugPrint('4 ---------------------->>>>>>>>');
-    final responseData = jsonDecode(response.body);
+  Future<void> captureImage() async {
+    if (controller == null || !controller!.value.isInitialized) {
+      print('Controller is not initialized');
+      return;
+    }
+    if (isCaptureInProgress) {
+      print('Capture already in progress');
+      return;
+    }
     setState(() {
-      imageUrl = responseData['image_url'];
-      responseText = responseData['text'];
-      isLoading = false;
+      isLoading = true;
+      isCaptureInProgress = true;
     });
-  } catch (e) {
-    print('Error capturing image: $e');
-    setState(() {
-      isLoading = false;
-    });
-  } finally {
-    setState(() {
-      isCaptureInProgress = false;
-    });
+    try {
+      final image = await controller!.takePicture();
+      final imageBytes = await image.readAsBytes();
+      final response = await http.post(
+        Uri.parse('http://192.168.1.4:5000/uploads'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'image': base64Encode(imageBytes)}),
+      );
+      final responseData = jsonDecode(response.body);
+      setState(() {
+        imageUrl = responseData['image_url'];
+        responseText = responseData['text'];
+        isLoading = false;
+      });
+      await flutterTts.speak(responseText!);
+    } catch (e) {
+      print('Error capturing image: $e');
+      setState(() {
+        isLoading = false;
+      });
+    } finally {
+      setState(() {
+        isCaptureInProgress = false;
+      });
+    }
   }
-}
+
+  Future<void> retryCamera() async {
+    setState(() {
+      isCameraInitialized = false;
+      imageUrl = null;
+      responseText = null;
+    });
+    await initializeCamera();
+  }
 
   @override
   void dispose() {
     controller?.dispose();
+    flutterTts.stop();
     super.dispose();
   }
 
@@ -103,37 +110,62 @@ Future<void> captureImage() async {
     return Scaffold(
       appBar: AppBar(
         title: Text('VisionAI - Camera Mode'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: retryCamera,
+          ),
+        ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: Center(
-              child: isLoading
-                  ? CircularProgressIndicator()
-                  : imageUrl == null
+          Positioned.fill(
+            child: Image.asset(
+              'images/bg.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+          Column(
+            children: [
+              Expanded(
+                child: Center(
+                  child: imageUrl == null
                       ? isCameraInitialized
                           ? CameraPreview(controller!)
-                          : CircularProgressIndicator()
-                      : Image.network(imageUrl!),
-            ),
+                          : Container() // Empty container when camera is not initialized
+                      : Container(
+                          width: double.infinity,
+                          height: double.infinity,
+                          child: Image.network(
+                            imageUrl!,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: ElevatedButton(
+                  onPressed: captureImage,
+                  child: Icon(Icons.camera),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.all(16.0),
+                color: Colors.black,
+                width: double.infinity,
+                child: Text(
+                  responseText ?? '',
+                  style: TextStyle(color: Colors.white, fontSize: 18.0),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ElevatedButton(
-              onPressed: captureImage,
-              child: Icon(Icons.camera),
+          if (isLoading)
+            Center(
+              child: CircularProgressIndicator(),
             ),
-          ),
-          Container(
-            padding: EdgeInsets.all(16.0),
-            color: Colors.black,
-            width: double.infinity,
-            child: Text(
-              responseText ?? '',
-              style: TextStyle(color: Colors.white, fontSize: 18.0),
-              textAlign: TextAlign.center,
-            ),
-          ),
         ],
       ),
     );
