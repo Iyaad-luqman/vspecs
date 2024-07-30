@@ -23,7 +23,13 @@ model = YOLO("yolov8n.pt")  # pretrained YOLOv8n model
 from collections import Counter
 from collections import Counter
 from flask import send_file
-
+def get_unique_filename(directory, base_filename, extension):
+    counter = 1
+    while True:
+        filename = f"{base_filename}{counter}.{extension}"
+        if not os.path.exists(os.path.join(directory, filename)):
+            return filename
+        counter += 1
 @app.route('/recognised.jpeg', methods=['GET'])
 def get_recognised_image():
     try:
@@ -113,7 +119,10 @@ def upload_image():
         
         plt.imshow(res_plotted)
         plt.axis('off')
-        plt.savefig('recognised.jpeg', bbox_inches='tight', pad_inches=0)
+        recognised_filename = get_unique_filename(app.config['UPLOAD_FOLDER'], 'recognised', 'jpeg')
+        recognised_filepath = os.path.join(app.config['UPLOAD_FOLDER'], recognised_filename)
+        
+        plt.savefig(recognised_filepath, bbox_inches='tight', pad_inches=0)
         
 
         output = translate_coordinates_to_positions(output)
@@ -124,7 +133,8 @@ def upload_image():
             else:
                 grouped_output.append(f'{obj} is at {pos}')
         grouped_output_str = '.'.join(grouped_output)
-        return jsonify({'text': grouped_output_str, 'image_url':'http://192.168.1.4:5000/recognised.jpeg'}), 200
+        image_file = f'http://192.168.1.4:7000/uploads/{recognised_filename}'
+        return jsonify({'text': grouped_output_str, 'image_url':image_file }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

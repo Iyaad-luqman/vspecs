@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
@@ -108,11 +110,31 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('VisionAI - Camera Mode'),
+           appBar: AppBar(
+        automaticallyImplyLeading: false, // this will hide the back button
+        title: Center(
+child: Text(
+  'VisionAI',
+  style: TextStyle(color: Colors.white),
+), // replace 'Marks' with your desired title
+        ),
+        backgroundColor: Color.fromARGB(181, 2, 58, 141),
+        elevation: 0,
+        flexibleSpace: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Color.fromARGB(255, 31, 0, 102).withOpacity(0),
+              ),
+            ),
+          ),
+        ),
+      
         actions: [
           IconButton(
             icon: Icon(Icons.refresh),
+            color: Colors.white,
             onPressed: retryCamera,
           ),
         ],
