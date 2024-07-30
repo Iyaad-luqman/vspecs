@@ -22,6 +22,14 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 model = YOLO("yolov8n.pt")  # pretrained YOLOv8n model
 from collections import Counter
 from collections import Counter
+from flask import send_file
+
+@app.route('/recognised.jpeg', methods=['GET'])
+def get_recognised_image():
+    try:
+        return send_file('recognised.jpeg', mimetype='image/jpeg')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 def translate_coordinates_to_positions(coordinates_str):
     # Define thresholds for left/right and top/bottom
@@ -115,11 +123,12 @@ def upload_image():
                 grouped_output.append(pos)
             else:
                 grouped_output.append(f'{obj} is at {pos}')
-        
-        return jsonify({'detected_objects': grouped_output, 'img_location':'http://192.168.1.4:7000/recognised.jpeg'}), 200
+        grouped_output_str = '.'.join(grouped_output)
+        return jsonify({'text': grouped_output, 'image_url':'http://192.168.1.4:5000/recognised.jpeg'}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
