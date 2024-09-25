@@ -33,14 +33,31 @@ class _CameraScreenState extends State<CameraScreen> {
   bool isCaptureInProgress = false;
   String? imageUrl;
   String? responseText;
+  String? serverUrl;
   FlutterTts flutterTts = FlutterTts();
 
   @override
   void initState() {
     super.initState();
+    fetchServerUrl();
     initializeCamera();
   }
 
+  Future<void> fetchServerUrl() async {
+    try {
+      final response = await http.get(Uri.parse('https://api.jsonbin.io/v3/b/66f3e256acd3cb34a88b43d2'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          serverUrl = data['record']['url'];
+        });
+      } else {
+        print('Failed to fetch server URL');
+      }
+    } catch (e) {
+      print('Error fetching server URL: $e');
+    }
+  }
   Future<void> initializeCamera() async {
     final cameras = await availableCameras();
     final camera = cameras.first;
@@ -64,12 +81,12 @@ class _CameraScreenState extends State<CameraScreen> {
       isLoading = true;
       isCaptureInProgress = true;
     });
-    try {
+try {
       final image = await controller!.takePicture();
       final imageBytes = await image.readAsBytes();
       final response = await http.post(
-        Uri.parse('http://192.168.72.198:5000/uploads'),
-        headers: {'ContSent-Type': 'application/json'},
+        Uri.parse('$serverUrl/uploads'),
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'image': base64Encode(imageBytes)}),
       );
       final responseData = jsonDecode(response.body);
