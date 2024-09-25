@@ -68,8 +68,8 @@ class _CameraScreenState extends State<CameraScreen> {
       final image = await controller!.takePicture();
       final imageBytes = await image.readAsBytes();
       final response = await http.post(
-        Uri.parse('http://192.168.1.4:5000/uploads'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('http://192.168.72.198:5000/uploads'),
+        headers: {'ContSent-Type': 'application/json'},
         body: jsonEncode({'image': base64Encode(imageBytes)}),
       );
       final responseData = jsonDecode(response.body);

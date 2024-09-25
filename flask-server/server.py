@@ -92,6 +92,7 @@ def upload_image():
     data = request.get_json()
     
     if 'image' not in data:
+        print('No image')
         return jsonify({'error': 'No image part'}), 400
     
     image_data = data['image']
@@ -133,10 +134,11 @@ def upload_image():
             else:
                 grouped_output.append(f'{obj} is at {pos}')
         grouped_output_str = '.'.join(grouped_output)
-        image_file = f'http://192.168.1.4:7000/uploads/{recognised_filename}'
+        image_file = f'http://192.168.72.198:7000/uploads/{recognised_filename}'
         return jsonify({'text': grouped_output_str, 'image_url':image_file }), 200
 
     except Exception as e:
+        print('Error', str(e))
         return jsonify({'error': str(e)}), 500
 
 
