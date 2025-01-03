@@ -38,9 +38,14 @@ load_encodings()
 
 
 def recognize_image(image_path):
-    
     """Recognize faces in the provided image."""
-    image = face_recognition.load_image_file(image_path)
+    # Take a screenshot of the image
+    screenshot_path = 'uploads/screenshot_image.jpg'
+    image = cv2.imread(image_path)
+    cv2.imwrite(screenshot_path, image)
+
+    # Use the screenshot for face recognition
+    image = face_recognition.load_image_file(screenshot_path)
     face_encodings = face_recognition.face_encodings(image)
 
     if len(face_encodings) == 0:
@@ -212,7 +217,7 @@ def process_audio_and_image():
         result = "Unknown action."
 
     # Remove the temporary image file
-    os.remove(image_path)
+    # os.remove(image_path)
     print(result)
     return jsonify({'response': result})
 
