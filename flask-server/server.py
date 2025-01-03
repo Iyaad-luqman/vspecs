@@ -34,19 +34,11 @@ def load_encodings():
         with open(ENCODINGS_FILE, 'rb') as f:
             known_face_encodings, known_face_names = pickle.load(f)
 
-def upload_image_for_recognition(image_path, name):
-    """Upload an image for face recognition, store the face encoding with the given name."""
-    image = face_recognition.load_image_file(image_path)
-    face_encodings = face_recognition.face_encodings(image)
+load_encodings()
 
-    if len(face_encodings) == 0:
-        raise ValueError("No face found in the image.")
-
-    known_face_encodings.append(face_encodings[0])
-    known_face_names.append(name)
-    save_encodings()
 
 def recognize_image(image_path):
+    
     """Recognize faces in the provided image."""
     image = face_recognition.load_image_file(image_path)
     face_encodings = face_recognition.face_encodings(image)
@@ -61,11 +53,11 @@ def recognize_image(image_path):
     if True in matches:
         first_match_index = matches.index(True)
         name = known_face_names[first_match_index]
+        name = f"{name} is in front of you"
 
     return name
 
 # Load known face encodings at the start
-load_encodings()
 
 # --- Complex Scene Detection Functions ---
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -147,62 +139,72 @@ def translate_coordinates_to_positions(coordinates_str):
     return most_common_positions
 
 # --- Flask Routes ---
+@app.route('/detect', methods=['POST'])
+def detect_face():
+    """Detect faces in the provided image."""
+    data = request.get_json()
+    image_path = data['image_path']
+    result = recognize_image(image_path)
+    return jsonify({'response': result})
+
+
 @app.route('/uploads', methods=['POST'])
 def process_audio_and_image():
     """Process both audio and image files, and provide textual responses based on the image."""
     data = request.get_json()
-    if 'image' not in data or 'audio' not in data:
-        return jsonify({'error': 'Image and audio are required'}), 400
-
-    # Decode the image and save it temporarily
     image_data = base64.b64decode(data['image'])
     image_path = 'uploads/temp_image.jpg'
     with open(image_path, 'wb') as f:
         f.write(image_data)
     
-    # For now, we assume the audio is for processing commands or as an input placeholder.
-    # You can extend this part by adding audio-to-text conversion, but we will skip it for now.
-    audio_data = base64.b64decode(data['audio'])
-    # Save the audio data to a temporary file
-   # Save the audio data to a temporary AAC file
-    aac_file_path = 'uploads/temp_audio.aac'
-    with open(aac_file_path, 'wb') as f:
-        f.write(audio_data)
+        
+    if 'audio' in data:
+        # Decode the image and save it temporarily
+       
+        # For now, we assume the audio is for processing commands or as an input placeholder.
+        # You can extend this part by adding audio-to-text conversion, but we will skip it for now.
+        audio_data = base64.b64decode(data['audio'])
+        # Save the audio data to a temporary file
+    # Save the audio data to a temporary AAC file
+        aac_file_path = 'uploads/temp_audio.aac'
+        with open(aac_file_path, 'wb') as f:
+            f.write(audio_data)
 
-    # Convert the AAC file to WAV format
-    wav_file_path = 'uploads/temp_audio.wav'
-    audio = AudioSegment.from_file(aac_file_path, format='aac')
-    audio.export(wav_file_path, format='wav')
+        # Convert the AAC file to WAV format
+        wav_file_path = 'uploads/temp_audio.wav'
+        audio = AudioSegment.from_file(aac_file_path, format='aac')
+        audio.export(wav_file_path, format='wav')
 
-    # Initialize the recognizer
-    recognizer = sr.Recognizer()
+        # Initialize the recognizer
+        recognizer = sr.Recognizer()
 
-    # Load the audio file
-    with sr.AudioFile(wav_file_path) as source:
-        audio = recognizer.record(source)
+        # Load the audio file
+        with sr.AudioFile(wav_file_path) as source:
+            audio = recognizer.record(source)
 
-    # Convert the audio to text
-    try:
-        query_from_audio = recognizer.recognize_google(audio)
-        print("Transcription: " + query_from_audio)
-    except sr.UnknownValueError:
-        query_from_audio = "Could not understand the audio"
-        print("Google Speech Recognition could not understand the audio")
-    except sr.RequestError as e:
-        query_from_audio = "Could not request results from Google Speech Recognition service"
-        print("Could not request results from Google Speech Recognition service; {0}".format(e))
+        # Convert the audio to text
+        try:
+            query_from_audio = recognizer.recognize_google(audio)
+            print("Transcription: " + query_from_audio)
+        except sr.UnknownValueError:
+            query_from_audio = "Could not understand the audio"
+            print("Google Speech Recognition could not understand the audio")
+        except sr.RequestError as e:
+            query_from_audio = "Could not request results from Google Speech Recognition service"
+            print("Could not request results from Google Speech Recognition service; {0}".format(e))
 
 
     # Simulating an audio transcript query. In a real-world scenario, you'd use audio transcription services.
 
     # Action classification logic based on audio query
-    action = classify_action(query_from_audio)
+    # action = classify_action(query_from_audio)
+    action = data['mode']
     print(action)
-    if action == 'face_rec':
+    if action == 'Face':
         result = recognize_image(image_path)
-    elif action == 'comp_scene':
+    elif action == 'Scene':
         result = analyze_image(image_path, query_from_audio)
-    elif action == 'obj_det':
+    elif action == 'Object':
         output = object_detection(image_path)
         translated_output = translate_coordinates_to_positions(output)
         result = ". ".join([f'{obj} is at {pos}' for obj, pos in translated_output.items()])
@@ -213,6 +215,31 @@ def process_audio_and_image():
     os.remove(image_path)
     print(result)
     return jsonify({'response': result})
+
+
+
+@app.route('/store_face', methods=['POST'])
+def store_face():
+    """Store a face encoding for face recognition."""
+    data = request.get_json()
+    if 'image_path' not in data or 'name' not in data:
+        return jsonify({'error': 'Image and name are required'}), 400
+
+    upload_image_for_recognition(data['image_path'], data['name'])
+    return jsonify({'message': 'Face stored successfully'})
+
+def upload_image_for_recognition(image_path, name):
+    """Upload an image for face recognition, store the face encoding with the given name."""
+    image = face_recognition.load_image_file(image_path)
+    face_encodings = face_recognition.face_encodings(image)
+
+    if len(face_encodings) == 0:
+        raise ValueError("No face found in the image.")
+
+    known_face_encodings.append(face_encodings[0])
+    known_face_names.append(name)
+    save_encodings()
+    load_encodings()
 
 def classify_action(query):
     """Classify user query as face recognition, object detection, or complex scene analysis."""
@@ -231,6 +258,7 @@ def classify_action(query):
     )
 
     response = chat_session.send_message(query).text.strip().lower()
+    print("Action:", response)
     return response
 
 if __name__ == '__main__':

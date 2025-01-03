@@ -40,6 +40,7 @@ class _CameraScreenState extends State<CameraScreen> {
   FlutterSoundRecorder? _recorder;
   bool isRecording = false;
   String? audioPath;
+  String selectedMode = 'Face'; // Default mode
 
   @override
 void initState() {
@@ -111,6 +112,9 @@ Future<void> captureImageAndAudio() async {
     } else {
       // Stop recording and capture image
       audioPath = await _recorder!.stopRecorder();
+      setState(() {
+        isRecording = false;
+      });
       final image = await controller!.takePicture();
       final imageBytes = await image.readAsBytes();
       final audioBytes = await File(audioPath!).readAsBytes();
@@ -121,10 +125,14 @@ Future<void> captureImageAndAudio() async {
         body: jsonEncode({
           'image': base64Encode(imageBytes),
           'audio': base64Encode(audioBytes),
+          'mode': selectedMode, // Include selected mode in the request
         }),
       );
 
       if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        responseText = responseData['response'];
+        await flutterTts.speak(responseText!);
         print('Upload successful');
       } else {
         print('Failed to upload');
@@ -214,12 +222,39 @@ Future<void> captureImageAndAudio() async {
                         ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: ElevatedButton(
-                  onPressed: captureImageAndAudio,
-                  child: Icon(isRecording ? Icons.stop : Icons.camera),
-                ),
+              Row(
+                children: [
+                  // Dropdown for selecting mode
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: DropdownButton<String>(
+                      value: selectedMode,
+                      items: <String>['Face', 'Object', 'Scene']
+                          .map<DropdownMenuItem<String>>((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          selectedMode = newValue!;
+                        });
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: ElevatedButton(
+                      onPressed: captureImageAndAudio,
+                      child: isLoading
+                          ? CircularProgressIndicator(
+                              color: Colors.white,
+                            )
+                          : Icon(isRecording ? Icons.stop : Icons.mic),
+                    ),
+                  ),
+                ],
               ),
               Container(
                 padding: EdgeInsets.all(16.0),
