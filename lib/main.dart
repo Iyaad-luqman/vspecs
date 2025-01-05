@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:hardware_button_listener/hardware_button_listener.dart';
+import 'package:hardware_button_listener/models/hardware_button.dart';
 
 void main() => runApp(VisionAIApp());
 
@@ -18,22 +20,18 @@ class VisionAIApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: CameraScreen(),
+      home: AudioScreen(),
     );
   }
 }
 
-class CameraScreen extends StatefulWidget {
+class AudioScreen extends StatefulWidget {
   @override
-  _CameraScreenState createState() => _CameraScreenState();
+  _AudioScreenState createState() => _AudioScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
-  CameraController? controller;
-  bool isCameraInitialized = false;
+class _AudioScreenState extends State<AudioScreen> {
   bool isLoading = false;
-  bool isCaptureInProgress = false;
-  String? imageUrl;
   String? responseText;
   String? serverUrl;
   FlutterTts flutterTts = FlutterTts();
@@ -41,89 +39,88 @@ class _CameraScreenState extends State<CameraScreen> {
   bool isRecording = false;
   String? audioPath;
   String selectedMode = 'Face'; // Default mode
+  final _hardwareButtonListener = HardwareButtonListener();
+  late StreamSubscription<HardwareButton> _buttonSubscription;
 
   @override
-void initState() {
-  super.initState();
-  fetchServerUrl();
-  initializeCamera();
-  requestPermissions();
-  _recorder = FlutterSoundRecorder();
+  void initState() {
+    super.initState();
+    fetchServerUrl();
+    requestPermissions();
+    _recorder = FlutterSoundRecorder();
     _recorder!.openRecorder();
-}
+    startListeningToHardwareButtons();
+  }
 
   Future<void> requestPermissions() async {
     await Permission.microphone.request();
   }
-Future<void> fetchServerUrl() async {
-  try {
-    final response = await http.get(Uri.parse('https://api.jsonbin.io/v3/b/66f3e256acd3cb34a88b43d2'));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      setState(() {
-        serverUrl = data['record']['url'];
-      });
-    } else {
-      print('Failed to fetch server URL');
-    }
-  } catch (e) {
-    print('Error fetching server URL: $e');
-  }
-}
 
-Future<void> initializeCamera() async {
-  final cameras = await availableCameras();
-  final camera = cameras.first;
-  controller = CameraController(camera, ResolutionPreset.high);
-  await controller!.initialize();
-  setState(() {
-    isCameraInitialized = true;
-  });
-}
-
-Future<void> captureImageAndAudio() async {
-  if (controller == null || !controller!.value.isInitialized) {
-    print('Controller is not initialized');
-    return;
-  }
-  if (isCaptureInProgress) {
-    print('Capture already in progress');
-    return;
-  }
-  if (serverUrl == null) {
-    await fetchServerUrl();
-    if (serverUrl == null) {
-      print('Failed to fetch server URL');
-      return;
+  Future<void> fetchServerUrl() async {
+    try {
+      final response = await http.get(Uri.parse('https://api.jsonbin.io/v3/b/66f3e256acd3cb34a88b43d2'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          serverUrl = data['record']['url'];
+        });
+      } else {
+        print('Failed to fetch server URL');
+      }
+    } catch (e) {
+      print('Error fetching server URL: $e');
     }
   }
-  setState(() {
-    isLoading = true;
-    isCaptureInProgress = true;
-  });
 
-  try {
+  void startListeningToHardwareButtons() {
+    _buttonSubscription = _hardwareButtonListener.listen((event) {
+    debugPrint(event.buttonKey.toString());
+      if (event.buttonKey == 24) {
+        startRecording();
+      } else if (event.buttonKey == 25) {
+        stopRecordingAndSend();
+      }
+    });
+  }
+
+  Future<void> startRecording() async {
     if (!isRecording) {
-      // Start recording
       await _recorder!.startRecorder(toFile: 'audio.aac');
       setState(() {
         isRecording = true;
       });
-    } else {
-      // Stop recording and capture image
+    }
+  }
+
+  Future<void> stopRecordingAndSend() async {
+    if (isRecording) {
       audioPath = await _recorder!.stopRecorder();
       setState(() {
         isRecording = false;
       });
-      final image = await controller!.takePicture();
-      final imageBytes = await image.readAsBytes();
+      sendAudio();
+    }
+  }
+
+  Future<void> sendAudio() async {
+    if (serverUrl == null) {
+      await fetchServerUrl();
+      if (serverUrl == null) {
+        print('Failed to fetch server URL');
+        return;
+      }
+    }
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
       final audioBytes = await File(audioPath!).readAsBytes();
 
       final response = await http.post(
         Uri.parse('$serverUrl/uploads'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'image': base64Encode(imageBytes),
           'audio': base64Encode(audioBytes),
           'mode': selectedMode, // Include selected mode in the request
         }),
@@ -137,31 +134,20 @@ Future<void> captureImageAndAudio() async {
       } else {
         print('Failed to upload');
       }
+    } catch (e) {
+      print('Error during upload: $e');
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
     }
-  } catch (e) {
-    print('Error during capture: $e');
-  } finally {
-    setState(() {
-      isLoading = false;
-      isCaptureInProgress = false;
-    });
-  }
-}
-
-  Future<void> retryCamera() async {
-    setState(() {
-      isCameraInitialized = false;
-      imageUrl = null;
-      responseText = null;
-    });
-    await initializeCamera();
   }
 
   @override
   void dispose() {
-    controller?.dispose();
     flutterTts.stop();
     _recorder!.closeRecorder();
+    _buttonSubscription.cancel();
     super.dispose();
   }
 
@@ -188,13 +174,6 @@ Future<void> captureImageAndAudio() async {
             ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh),
-            color: Colors.white,
-            onPressed: retryCamera,
-          ),
-        ],
       ),
       body: Stack(
         children: [
@@ -206,22 +185,6 @@ Future<void> captureImageAndAudio() async {
           ),
           Column(
             children: [
-              Expanded(
-                child: Center(
-                  child: imageUrl == null
-                      ? isCameraInitialized
-                          ? CameraPreview(controller!)
-                          : Container()
-                      : Container(
-                          width: double.infinity,
-                          height: double.infinity,
-                          child: Image.network(
-                            imageUrl!,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                ),
-              ),
               Row(
                 children: [
                   // Dropdown for selecting mode
@@ -241,17 +204,6 @@ Future<void> captureImageAndAudio() async {
                           selectedMode = newValue!;
                         });
                       },
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: ElevatedButton(
-                      onPressed: captureImageAndAudio,
-                      child: isLoading
-                          ? CircularProgressIndicator(
-                              color: Colors.white,
-                            )
-                          : Icon(isRecording ? Icons.stop : Icons.mic),
                     ),
                   ),
                 ],

@@ -157,10 +157,10 @@ def detect_face():
 def process_audio_and_image():
     """Process both audio and image files, and provide textual responses based on the image."""
     data = request.get_json()
-    image_data = base64.b64decode(data['image'])
-    image_path = 'uploads/temp_image.jpg'
-    with open(image_path, 'wb') as f:
-        f.write(image_data)
+    # image_data = base64.b64decode(data['image'])
+    image_path = 'uploads/i2.jpg'
+    # with open(image_path, 'wb') as f:
+    #     f.write(image_data)
     
         
     if 'audio' in data:
